@@ -9,17 +9,14 @@ improvements!
 
 TODO:   1. Put dicts in another file to import?
         2. Need to implmement dual-curve bootstrapping
-        3. Virtually all the documentation needs to be re-written
         5. Add support for calculating futures convexity
-        8. Add license. I can publish this on GitHub.
         9. holiday_calendar dict needs significant work. Might need 2 
         functions so as to specify the country -> calendar. >> I should 
         probably just simplify and specify both in the dict. <<
-        10. Add FRAsInsts InstrumentCollector
+
 """
 import QuantLib as qlib
-import csv
-import os
+import csv, os
 
 class LiborCurve:
     """
@@ -80,8 +77,7 @@ class LiborCurve:
         self.conventions = self.csv_dict_helper(self, 
                                                 os.path.join(path, 'conventions.csv'))
         self.market_data = self.csv_dict_helper(self, 
-                                                os.path.join(path, 
-                                                'market_data.csv'),
+                                                os.path.join(path, 'market_data.csv'),
                                                 datatype=float)
         self.instrument_ids = self.csv_dict_helper(self,
                                                 os.path.join(path, 'instruments.csv'))
@@ -179,6 +175,17 @@ class LiborCurve:
         for date in self.qlibcurve.dates():
             self.dates.append(date.ISO())
             self.discount_factors.append(self.qlibcurve.discount(date))
+
+    def export(self):
+        path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'outputs/')
+        print(path)
+        with open(path + self.name + '.csv', 'w', newline='') as output:
+            outfile = csv.writer(output, delimiter=',')
+            data = [['',self.name]]
+            for date in enumerate(self.dates):
+                data.append((date[1], self.discount_factors[date[0]]))
+            outfile.writerows(data)
+        output.close()
 
 class InstrumentCollector:
     """
