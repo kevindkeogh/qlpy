@@ -18,7 +18,7 @@ TODO:   1. Put dicts in another file to import?
 import QuantLib as qlib
 import csv, os
 
-class LiborCurve:
+class Curve:
     """
     The LiborCurve object is the primary result of this module. LiborCurve 
     objects take the curve name and date as inputs, and the conventions, 
@@ -178,7 +178,6 @@ class LiborCurve:
 
     def export(self):
         path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'outputs/')
-        print(path)
         with open(path + self.name + '.csv', 'w', newline='') as output:
             outfile = csv.writer(output, delimiter=',')
             data = [['',self.name]]
@@ -186,6 +185,10 @@ class LiborCurve:
                 data.append((date[1], self.discount_factors[date[0]]))
             outfile.writerows(data)
         output.close()
+
+class LiborCurve(Curve):
+    def __init__(self, curve, curve_date):
+        super(LiborCurve, self).__init__(curve, curve_date)
 
 class InstrumentCollector:
     """
