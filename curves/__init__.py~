@@ -1,3 +1,0 @@
-from qlibpy.curves.LiborCurve import *
-
-__all__ = ['LiborCurve']
