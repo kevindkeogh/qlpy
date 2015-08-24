@@ -1,0 +1,28 @@
+general_Curvename,USD_3M,USD_OIS
+general_Country,United States,United States
+general_Capital,Washington,Washington
+general_Currency,USD,USD
+general_RequiresOIS,FALSE,FALSE
+general_NumberFutures,12,0
+general_HolidayCalendar,NYSE,Settlement
+deposits_SpotLag,2,2
+deposits_DCF,Act360,Act360
+deposits_Adjustment,Modified Following,Modified Following
+fras_SpotLag,2,2
+fras_DCF,Act360,Act360
+fras_Adjustment,Modified Following,Modified Following
+futures_SpotLag,2,2
+futures_DCF,Act360,Act360
+futures_Adjustment,Following,Following
+futures_Tenor,3,3
+futures_NumberOfFutures,12,12
+futures_DaysToExclude,70,70
+swaps_SpotLag,2,2
+swaps_FixedFreq,Semiannual,Semiannual
+swaps_FixedTenor,Semiannual,Semiannual
+swaps_FixedLegDCF,30360,30360
+swaps_FixedAdjustment,Unadjusted,Unadjusted
+swaps_FloatFreq,Quarterly,Quarterly
+swaps_FloatTenor,Quarterly,Quarterly
+swaps_FloatLegDCF,Act360,Act360
+swaps_FloatAdjustment,Modified Following,Modified Following
