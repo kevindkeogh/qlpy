@@ -20,7 +20,7 @@ import csv, os
 
 class Curve:
     """
-    The LiborCurve object is the primary result of this module. LiborCurve 
+    The Curve object is the primary result of this module. LiborCurve 
     objects take the curve name and date as inputs, and the conventions, 
     market data, and instruments csv's from the directory, and ultimately
     create the dates and discount factors from which the curves are built.
@@ -31,8 +31,7 @@ class Curve:
     market data, instruments, and conventions csv's.
 
     The curve can take deposit rates, futures, and swap rates in order to build
-    the curve. FRAs are not yet implemented, and neither is dual-curve
-    bootstrapping. These are both are currently on the to-do list.
+    the curve. Dual-curve bootstrapping is not yet implemented.
 
     The LiborCurve has 1 main public methods -- .discountfactor(date) and a few
     exposed derived attributes
@@ -187,8 +186,18 @@ class Curve:
         output.close()
 
 class LiborCurve(Curve):
+    """
+    LiborCurve implementation of the Curve object. Used for generating
+    Libor (and similar) curves. As of v0.1, dual-curve bootstrapping has
+    not been implemented.
+
+    Note: Not to be used for overnight indices.
+    """
     def __init__(self, curve, curve_date):
         super(LiborCurve, self).__init__(curve, curve_date)
+
+class OISCurve(Curve):
+    pass
 
 class InstrumentCollector:
     """
