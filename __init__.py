@@ -1,2 +1,2 @@
-from qlibpy.curves.LiborCurve import *
+from qlibpy.curves.Curve import *
 
