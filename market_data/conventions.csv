@@ -2,9 +2,9 @@ general_Curvename,USD_3M,USD_OIS
 general_Country,United States,United States
 general_Capital,Washington,Washington
 general_Currency,USD,USD
-general_RequiresOIS,FALSE,FALSE
+general_RequiresOIS,TRUE,FALSE
 general_NumberFutures,12,0
-general_HolidayCalendar,NYSE,Settlement
+general_HolidayCalendar,NYSE,NYSE
 deposits_SpotLag,2,2
 deposits_DCF,Act360,Act360
 deposits_Adjustment,Modified Following,Modified Following

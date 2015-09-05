@@ -8,7 +8,6 @@ any questions on the use of this script, and fork it to make any
 improvements!
 
 TODO:   1. Put dicts in another file to import?
-        2. Need to implmement dual-curve bootstrapping
         5. Add support for calculating futures convexity
         9. holiday_calendar dict needs significant work. Might need 2 
         functions so as to specify the country -> calendar. >> I should 
@@ -148,28 +147,6 @@ class Curve:
                 else:
                     result[key] = datatype(row[col_num])
         return result
-
-    def build(self):
-        """
-        Currently a private method that handles the actual curve construction.
-        Applied here in case I ever want to make the LiborCurve object lazy,
-        and require that some method be called before the curve is actually
-        built.
-        """
-
-        # InstrumentCollector objects
-        self.instruments = DepositsInsts(self)
-        self.instruments += FuturesInsts(self)
-        self.instruments += FRAsInsts(self)
-        self.instruments += SwapsInsts(self)
-
-        self.qlibcurve = qlib.PiecewiseCubicZero(
-            self.settlement_date,
-            self.instruments,
-            self.day_count_fraction[self.conventions['deposits_DCF']])
-
-        self.dates = []
-        self.discount_factors = []
         
         for date in self.qlibcurve.dates():
             self.dates.append(date.ISO())
@@ -196,8 +173,66 @@ class LiborCurve(Curve):
     def __init__(self, curve, curve_date):
         super(LiborCurve, self).__init__(curve, curve_date)
 
+    def build(self):
+        """
+        Currently a private method that handles the actual curve construction.
+        Applied here in case I ever want to make the LiborCurve object lazy,
+        and require that some method be called before the curve is actually
+        built.
+        """
+
+
+
+        if self.conventions['general_RequiresOIS'].lower() == 'true':
+            self.ois_curvename = self.conventions['general_Currency'] + "_OIS"
+            self.ois_curve = OISCurve(self.ois_curvename, self.curve_date)
+
+        # InstrumentCollector objects
+        self.instruments = DepositsInsts(self)
+        self.instruments += FuturesInsts(self)
+        self.instruments += FRAsInsts(self)
+        self.instruments += SwapsInsts(self)
+        
+        self.qlibcurve = qlib.PiecewiseCubicZero(
+                                self.settlement_date,
+                                self.instruments,
+                                self.day_count_fraction[self.conventions['deposits_DCF']])
+
+        self.dates = []
+        self.discount_factors = []
+
+        for date in self.qlibcurve.dates():
+            self.dates.append(date.ISO())
+            self.discount_factors.append(self.qlibcurve.discount(date))
+
 class OISCurve(Curve):
-    pass
+
+    def __init__(self, curve, curve_date):
+        super(OISCurve, self).__init__(curve, curve_date)
+
+    def build(self):
+        """
+        Currently a private method that handles the actual curve construction.
+        Applied here in case I ever want to make the OISCurve object lazy,
+        and require that some method be called before the curve is actually
+        built.
+        """
+
+        # InstrumentCollector objects
+        self.instruments = DepositsInsts(self) # Should only take 1 ON rate
+        self.instruments += OISSwapsInsts(self)
+
+        self.qlibcurve = qlib.PiecewiseCubicZero(
+            self.settlement_date,
+            self.instruments,
+            self.day_count_fraction[self.conventions['deposits_DCF']])
+
+        self.dates = []
+        self.discount_factors = []
+
+        for date in self.qlibcurve.dates():
+            self.dates.append(date.ISO())
+            self.discount_factors.append(self.qlibcurve.discount(date))
 
 class InstrumentCollector:
     """
@@ -338,14 +373,14 @@ class DepositsInsts(InstrumentCollector):
                                             objects.
         """
         return [qlib.DepositRateHelper(
-                qlib.QuoteHandle(rate),
-                period,
-                int(curve.conventions['deposits_SpotLag']),
-                curve.calendar,
-                self.bus_day_convention[curve.conventions['deposits_Adjustment']],
-                False,  # end of month
-                curve.day_count_fraction[curve.conventions['deposits_DCF']]) 
-                for period, rate in self._inst_ids]
+            qlib.QuoteHandle(rate),
+            period,
+            int(curve.conventions['deposits_SpotLag']),
+            curve.calendar,
+            self.bus_day_convention[curve.conventions['deposits_Adjustment']],
+            False,  # end of month
+            curve.day_count_fraction[curve.conventions['deposits_DCF']]) 
+            for period, rate in self._inst_ids]
 
 class FRAsInsts(InstrumentCollector):
     """
@@ -547,7 +582,7 @@ class SwapsInsts(InstrumentCollector):
 
         self.ibor_indices = {
         'AUD': qlib.AUDLibor,
-        'CAD': qlib.CADLibor,
+        'CAD': qlib.Cdor,
         'CHF': qlib.CHFLibor,
         'DKK': qlib.DKKLibor,
         'EUR': qlib.Euribor,
@@ -577,15 +612,94 @@ class SwapsInsts(InstrumentCollector):
             swap_rate_helpers (list):   list of qlib SwapRateHelper
                                         objects.
         """
-        return [qlib.SwapRateHelper(
-            qlib.QuoteHandle(rate),
-            period,
-            curve.calendar,
-            self.swap_freq[curve.conventions['swaps_FixedFreq']],
-            self.bus_day_convention[curve.conventions['swaps_FixedAdjustment']],
-            curve.day_count_fraction[curve.conventions['swaps_FixedLegDCF']],
-            self.ibor_indices[curve.currency](self.period_function(curve.name)))
+        if curve.conventions['general_RequiresOIS'].lower() == 'true':
+            return [qlib.SwapRateHelper(
+                qlib.QuoteHandle(rate),
+                period,
+                curve.calendar,
+                self.swap_freq[curve.conventions['swaps_FixedFreq']],
+                self.bus_day_convention[curve.conventions['swaps_FixedAdjustment']],
+                curve.day_count_fraction[curve.conventions['swaps_FixedLegDCF']],
+                self.ibor_indices[curve.currency](self.period_function(curve.name)),
+                qlib.QuoteHandle(qlib.SimpleQuote(0)), # spread on floating leg
+                qlib.Period(0, qlib.Days), # days forward start
+                qlib.YieldTermStructureHandle(curve.ois_curve.qlibcurve))
+                for period, rate in self._inst_ids]
+        else:            
+            return [qlib.SwapRateHelper(
+                qlib.QuoteHandle(rate),
+                period,
+                curve.calendar,
+                self.swap_freq[curve.conventions['swaps_FixedFreq']],
+                self.bus_day_convention[curve.conventions['swaps_FixedAdjustment']],
+                curve.day_count_fraction[curve.conventions['swaps_FixedLegDCF']],
+                self.ibor_indices[curve.currency](self.period_function(curve.name)))
+                for period, rate in self._inst_ids]
+
+class OISSwapsInsts(InstrumentCollector):
+    """
+    OISSwapsInsts is an InstrumentCollector for OIS swaps instruments. The
+    primary utility is the get_rate_helpers function, which turns the
+    instrument rates into qlib rate helpers, which are subsequently used to
+    build the curve.
+
+    The class only requires the curve that is being built, which already has
+    the associated data required to create the rate helpers.
+
+    Note that there are only a limited number of currencies that can be supported
+    by these ratehelpers. Further development would be needed to add Ibor indices
+    to the library, so that they could be used for ratehelper construction.
+
+    Attributes:
+        _inst_ids (PRIVATE, list):  list of the names of the swap rates to
+                                    be included in the curve construction
+        instruments (list):         list of the rate helpers for each instrument
+                                    to be included in the curve
+    """
+    def __init__(self, curve):
+        super(OISSwapsInsts, self).__init__()
+
+        self.swap_freq = {
+        'Once'      : qlib.Once,
+        'Annual'    : qlib.Annual,
+        'Semiannual': qlib.Semiannual,
+        'Quarterly' : qlib.Quarterly,
+        'Monthly'   : qlib.Monthly,
+        'Daily'     : qlib.Daily
+        }
+
+        self.ibor_indices = {
+        'EUR': qlib.Eonia(),
+        'GBP': qlib.Sonia(),
+        'USD': qlib.FedFunds()
+        }
+
+        self._inst_ids = self.get_instruments(curve, 'swaps')
+        self.instruments = self.get_rate_helpers(curve)
+
+    def get_rate_helpers(self, curve):
+        """
+        get_rate_helpers takes the LiborCurve object, and loops 
+        through the list of tuples in _inst_ids to create a list of 
+        SwapRateHelpers QuantLib objects. These objects use
+        several of the conventions that are assigned to the Curve object
+        in the conventions dict.
+
+        Args:
+            curve (LiborCurve object):  curve that you're building
+
+        Returns:
+            swap_rate_helpers (list):   list of qlib SwapRateHelper
+                                        objects.
+        """
+        return [qlib.OISRateHelper(
+                                   int(curve.conventions['deposits_SpotLag']),
+                                   period,
+                                   qlib.QuoteHandle(rate),
+                                   self.ibor_indices[curve.currency])
             for period, rate in self._inst_ids]
+
+
 
 def main():
     # Sample use

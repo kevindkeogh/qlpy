@@ -8,5 +8,3 @@ qlib.Settings.instance().evaluationDate = qlib.Date(31,12,2014)
 today = qlib.Date(31, 12, 2014)
 usd = qlibpy.LiborCurve('USD_3M', today)
 
-print(usd.__doc__)
-usd.export()
