@@ -19,7 +19,7 @@ import csv, os
 
 class Curve:
     """
-    The Curve object is the primary result of this module. LiborCurve 
+    The Curve object is the primary result of this module. Curve 
     objects take the curve name and date as inputs, and the conventions, 
     market data, and instruments csv's from the directory, and ultimately
     create the dates and discount factors from which the curves are built.
@@ -29,22 +29,22 @@ class Curve:
     on the curve name, which needs to match exactly to the curve name in the
     market data, instruments, and conventions csv's.
 
-    The curve can take deposit rates, futures, and swap rates in order to build
-    the curve. Dual-curve bootstrapping is not yet implemented.
+    The curve can take deposit rates, futures, swap rates, and ois swap rates
+    in order to build the curve. Dual-curve bootstrapping is not yet implemented.
 
-    The LiborCurve has 1 main public methods -- .discountfactor(date) and a few
+    The Curve has 1 main public method -- .discount_factor(date) and a few
     exposed derived attributes
 
     Attributes:
         curve (str):            string of the curve name (must match exactly to
                                 the name in the csvs used for curve data and 
                                 conventions)
-        date (qlib object):     quantlib object of the curve date.
+        date (qlib object):     QuantLib object of the curve date.
         currency (str):         string of the currency of the curve being built
         instruments(list):      list of quantlib objects that are the instruments
                                 that are ultimately used in the construction of the
                                 LiborCurve.
-        qlibcurve(qlib object): the QuantLib object that holds the C curve object.
+        qlibcurve(qlib object): the QuantLib object that holds the Curve object.
         discount_factors (float): list of discount factors that were calculated for
                                 each of the instruments that were used for curve
                                 construction
@@ -165,8 +165,10 @@ class Curve:
 class LiborCurve(Curve):
     """
     LiborCurve implementation of the Curve object. Used for generating
-    Libor (and similar) curves. As of v0.1, dual-curve bootstrapping has
-    not been implemented.
+    Libor (and similar) curves. The curve can be dual-bootstrapped, using
+    a convention that enables it. In order to dual-bootstrap, there must
+    be an associated 'CCY_OIS' curve, which will be built first, then used to
+    discount the swaps. 
 
     Note: Not to be used for overnight indices.
     """
@@ -180,8 +182,6 @@ class LiborCurve(Curve):
         and require that some method be called before the curve is actually
         built.
         """
-
-
 
         if self.conventions['general_RequiresOIS'].lower() == 'true':
             self.ois_curvename = self.conventions['general_Currency'] + "_OIS"
@@ -206,6 +206,12 @@ class LiborCurve(Curve):
             self.discount_factors.append(self.qlibcurve.discount(date))
 
 class OISCurve(Curve):
+    """
+    OISCurve implementation of the Curve object. Used for generating OIS
+    indices (currently only USD, EUR, and GBP). 
+
+    Note: Not to be used for LIBOR (and similar) indices.
+    """
 
     def __init__(self, curve, curve_date):
         super(OISCurve, self).__init__(curve, curve_date)
@@ -219,7 +225,7 @@ class OISCurve(Curve):
         """
 
         # InstrumentCollector objects
-        self.instruments = DepositsInsts(self) # Should only take 1 ON rate
+        self.instruments = DepositsInsts(self) # Should only take 1 O/N rate
         self.instruments += OISSwapsInsts(self)
 
         self.qlibcurve = qlib.PiecewiseCubicZero(
