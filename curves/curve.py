@@ -708,20 +708,42 @@ class OISSwapsInsts(InstrumentCollector):
 
 
 def main():
+    os.system('cls' if os.name == 'nt' else 'clear')
     # Sample use
-    qlib.Settings.instance().evaluationDate = qlib.Date(31,12,2014)
-    today = qlib.Date(31, 12, 2014)
+    print('This sample will demonstrate how to build the USD 3M LIBOR curve')
+    print('Enter the date you are trying to build the curve as of')
+    day = int(input('Enter the day (##): '))
+    month = int(input('Enter the month (##): '))
+    year = int(input('Enter the year (####): '))    
 
-    usd = LiborCurve('USD_3M', today)
+    now_date = qlib.Date(day, month, year)
+    qlib.Settings.instance().evaluationDate = now_date
 
-    for date in enumerate(usd.dates):
-        print(date[1], usd.discount_factors[date[0]])
+    print('Building...')
+    usd = LiborCurve('USD_3M', now_date)
+    print('-'*70)
+    print('The curve is now built')
+    
+    export = input('Export discount factors? (y/n) ')
+    if export.lower() == 'y':
+        usd.export()
+        print('Curve has been exported to the outputs folder')
+        print('-'*70)
 
-    randomdate = qlib.Date(12,2,2018)
+    print_dfs = input('Print discount factors? (y/n) ')
+    if print_dfs.lower() == 'y':
+        for date in enumerate(usd.dates):
+            print(date[1], usd.discount_factors[date[0]])
+        print('-'*70)
 
-    df = usd.discount_factor(randomdate)
-
-    print(df)
+    print_df = input('Print discount factor for specific date? (y/n) ')
+    if print_df.lower() == 'y':
+        day = int(input('Day? (##) '))
+        month = int(input('Month? (##) '))
+        year = int(input('Year? (##) '))
+        random_date = qlib.Date(day, month, year)
+        df = usd.discount_factor(random_date)
+        print(df)
 
 if __name__ == '__main__':
     main()
