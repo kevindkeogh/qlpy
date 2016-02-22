@@ -1,2 +1,2 @@
-from qlibpy.curves.Curve import *
+from qlibpy.curves.curve import *
 
