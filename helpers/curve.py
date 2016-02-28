@@ -161,17 +161,6 @@ class Curve:
                     result[key] = datatype(row[col_num])
         return result
 
-    def dict_gen(self, curs):
-        ''' 
-        From Python Essential Reference by David Beazley
-        '''
-        field_names = [d[0].lower() for d in curs.description]
-        while True:
-            rows = curs.fetchmany()
-            if not rows: return
-            for row in rows:
-                yield dict(itertools.izip(field_names, row))
-
     def export(self):
         path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'outputs/')
         with open(path + self.name + '.csv', 'w', newline='') as output:
@@ -725,45 +714,3 @@ class OISSwapsInsts(InstrumentCollector):
                                    self.ibor_indices[curve.currency])
             for period, rate in self._inst_ids]
 
-
-
-def main():
-    os.system('cls' if os.name == 'nt' else 'clear')
-    # Sample use
-    print('This sample will demonstrate how to build the USD 3M LIBOR curve')
-    print('Enter the date you are trying to build the curve as of')
-    day = int(input('Enter the day (##): '))
-    month = int(input('Enter the month (##): '))
-    year = int(input('Enter the year (####): '))    
-
-    now_date = ql.Date(day, month, year)
-    ql.Settings.instance().evaluationDate = now_date
-
-    print('Building...')
-    usd = LiborCurve('USD_3M', now_date, conn)
-    print('-'*70)
-    print('The curve is now built')
-    
-    export = input('Export discount factors? (y/n) ')
-    if export.lower() == 'y':
-        usd.export()
-        print('Curve has been exported to the outputs folder')
-        print('-'*70)
-
-    print_dfs = input('Print discount factors? (y/n) ')
-    if print_dfs.lower() == 'y':
-        for date in enumerate(usd.dates):
-            print(date[1], usd.discount_factors[date[0]])
-        print('-'*70)
-
-    print_df = input('Print discount factor for specific date? (y/n) ')
-    if print_df.lower() == 'y':
-        day = int(input('Day? (##) '))
-        month = int(input('Month? (##) '))
-        year = int(input('Year? (##) '))
-        random_date = ql.Date(day, month, year)
-        df = usd.discount_factor(random_date)
-        print(df)
-
-if __name__ == '__main__':
-    main()
