@@ -1,4 +1,4 @@
-,USD_3M,USD_OIS
+curve_name,USD_3M,USD_OIS
 deposits_ON,True,True
 deposits_TN,False,False
 deposits_SN,False,False
