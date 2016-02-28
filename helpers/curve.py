@@ -14,8 +14,9 @@ TODO:   1. Put dicts in another file to import?
         probably just simplify and specify both in the dict. <<
 
 """
-import QuantLib as qlib
+import QuantLib as ql
 import csv, os
+import itertools
 
 class Curve:
     """
@@ -39,12 +40,12 @@ class Curve:
         curve (str):            string of the curve name (must match exactly to
                                 the name in the csvs used for curve data and 
                                 conventions)
-        date (qlib object):     QuantLib object of the curve date.
+        date (ql.object):     QuantLib object of the curve date.
         currency (str):         string of the currency of the curve being built
         instruments(list):      list of quantlib objects that are the instruments
                                 that are ultimately used in the construction of the
                                 LiborCurve.
-        qlibcurve(qlib object): the QuantLib object that holds the Curve object.
+        qlcurve(ql object): the QuantLib object that holds the Curve object.
         discount_factors (float): list of discount factors that were calculated for
                                 each of the instruments that were used for curve
                                 construction
@@ -52,37 +53,46 @@ class Curve:
                                 instrument you've added to the curve.
 
     """
-    def __init__(self, curve, curve_date):
+    def __init__(self, curve, curve_date, conn):
         self.name = curve
         self.curve_date = curve_date
+        self.conn = conn
 
         self.day_count_fraction = {
-            'Act360': qlib.Actual360(),
-            'Act365Fixed': qlib.Actual365Fixed(),
-            'ActAct': qlib.ActualActual(),
-            'Bus252': qlib.Business252(),
-            '30360': qlib.Thirty360()
+            'Act360': ql.Actual360(),
+            'Act365Fixed': ql.Actual365Fixed(),
+            'ActAct': ql.ActualActual(),
+            'Bus252': ql.Business252(),
+            '30360': ql.Thirty360()
         }
 
         # TODO: vastly increase the length of this dictionary
         self.holiday_calendar = {
-        "NYSE": qlib.UnitedStates(qlib.UnitedStates.NYSE)
+        "NYSE": ql.UnitedStates(ql.UnitedStates.NYSE)
         }
 
-        path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'market_data/')
+        path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'data/')
 
-        # import csv's as dicts
-        self.conventions = self.csv_dict_helper(self, 
-                                                os.path.join(path, 'conventions.csv'))
-        self.market_data = self.csv_dict_helper(self, 
-                                                os.path.join(path, 'market_data.csv'),
-                                                datatype=float)
-        self.instrument_ids = self.csv_dict_helper(self,
-                                                os.path.join(path, 'instruments.csv'))
+        # get data
+        cursor = conn.cursor()
+        sql_statement = ('SELECT * FROM conventions '
+                         'where curve_name is "{curve}"').format(**locals())
+        cursor.execute(sql_statement)
+        self.conventions = cursor.fetchone()
+        
+        sql_statement = ('SELECT * FROM rates_data '
+                         'where curve_name is "{curve}"').format(**locals())
+        cursor.execute(sql_statement)
+        self.market_data = cursor.fetchone()
 
+        sql_statement = ('SELECT * FROM instruments '
+                         'where curve_name is "{curve}"').format(**locals())
+        cursor.execute(sql_statement)        
+        self.instrument_ids = cursor.fetchone()
+        
         # add a few general conventions
-        self.settlement_date = curve_date + qlib.Period(
-            int(self.conventions['deposits_SpotLag']), qlib.Days)
+        self.settlement_date = curve_date + ql.Period(
+            int(self.conventions['deposits_SpotLag']), ql.Days)
         self.currency = self.conventions['general_Currency']
         self.calendar = self.holiday_calendar[
             self.conventions['general_HolidayCalendar']]
@@ -101,14 +111,14 @@ class Curve:
         discount factor needed for that date.
 
         Args:
-            date (qlib object):     date for the discount factor you're 
+            date (ql.object):     date for the discount factor you're 
                                     requesting
 
         Returns:
             discount factor(float): discount factor for that date you requested
 
         """
-        return self.qlibcurve.discount(date)
+        return self.qlcurve.discount(date)
 
     def csv_dict_helper(self, curve, filename, datatype=str):
         """
@@ -147,10 +157,17 @@ class Curve:
                 else:
                     result[key] = datatype(row[col_num])
         return result
-        
-        for date in self.qlibcurve.dates():
-            self.dates.append(date.ISO())
-            self.discount_factors.append(self.qlibcurve.discount(date))
+
+    def dict_gen(self, curs):
+        ''' 
+        From Python Essential Reference by David Beazley
+        '''
+        field_names = [d[0].lower() for d in curs.description]
+        while True:
+            rows = curs.fetchmany()
+            if not rows: return
+            for row in rows:
+                yield dict(itertools.izip(field_names, row))
 
     def export(self):
         path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'outputs/')
@@ -172,8 +189,8 @@ class LiborCurve(Curve):
 
     Note: Not to be used for overnight indices.
     """
-    def __init__(self, curve, curve_date):
-        super(LiborCurve, self).__init__(curve, curve_date)
+    def __init__(self, curve, curve_date, conn):
+        super(LiborCurve, self).__init__(curve, curve_date, conn)
 
     def build(self):
         """
@@ -185,7 +202,7 @@ class LiborCurve(Curve):
 
         if self.conventions['general_RequiresOIS'].lower() == 'true':
             self.ois_curvename = self.conventions['general_Currency'] + "_OIS"
-            self.ois_curve = OISCurve(self.ois_curvename, self.curve_date)
+            self.ois_curve = OISCurve(self.ois_curvename, self.curve_date, self.conn)
 
         # InstrumentCollector objects
         self.instruments = DepositsInsts(self)
@@ -193,7 +210,7 @@ class LiborCurve(Curve):
         self.instruments += FRAsInsts(self)
         self.instruments += SwapsInsts(self)
         
-        self.qlibcurve = qlib.PiecewiseCubicZero(
+        self.qlcurve = ql.PiecewiseCubicZero(
                                 self.settlement_date,
                                 self.instruments,
                                 self.day_count_fraction[self.conventions['deposits_DCF']])
@@ -201,9 +218,9 @@ class LiborCurve(Curve):
         self.dates = []
         self.discount_factors = []
 
-        for date in self.qlibcurve.dates():
+        for date in self.qlcurve.dates():
             self.dates.append(date.ISO())
-            self.discount_factors.append(self.qlibcurve.discount(date))
+            self.discount_factors.append(self.qlcurve.discount(date))
 
 class OISCurve(Curve):
     """
@@ -213,8 +230,8 @@ class OISCurve(Curve):
     Note: Not to be used for LIBOR (and similar) indices.
     """
 
-    def __init__(self, curve, curve_date):
-        super(OISCurve, self).__init__(curve, curve_date)
+    def __init__(self, curve, curve_date, conn):
+        super(OISCurve, self).__init__(curve, curve_date, conn)
 
     def build(self):
         """
@@ -228,7 +245,7 @@ class OISCurve(Curve):
         self.instruments = DepositsInsts(self) # Should only take 1 O/N rate
         self.instruments += OISSwapsInsts(self)
 
-        self.qlibcurve = qlib.PiecewiseCubicZero(
+        self.qlcurve = ql.PiecewiseCubicZero(
             self.settlement_date,
             self.instruments,
             self.day_count_fraction[self.conventions['deposits_DCF']])
@@ -236,9 +253,9 @@ class OISCurve(Curve):
         self.dates = []
         self.discount_factors = []
 
-        for date in self.qlibcurve.dates():
+        for date in self.qlcurve.dates():
             self.dates.append(date.ISO())
-            self.discount_factors.append(self.qlibcurve.discount(date))
+            self.discount_factors.append(self.qlcurve.discount(date))
 
 class InstrumentCollector:
     """
@@ -252,11 +269,11 @@ class InstrumentCollector:
     """
     def __init__(self):
         self.bus_day_convention = {
-            'Modified Following': qlib.ModifiedFollowing,
-            'Following': qlib.Following,
-            'Preceding': qlib.Preceding,
-            'Modified Preceding': qlib.ModifiedPreceding,
-            'Unadjusted': qlib.Unadjusted
+            'Modified Following': ql.ModifiedFollowing,
+            'Following': ql.Following,
+            'Preceding': ql.Preceding,
+            'Modified Preceding': ql.ModifiedPreceding,
+            'Unadjusted': ql.Unadjusted
         }
 
     def __iter__(self):
@@ -272,7 +289,7 @@ class InstrumentCollector:
     def get_instruments(self, curve, filter_string):
         """
         The get_instruments function serves to return a list of tuples,
-        where each item holds the qlib period object and the associated
+        where each item holds the ql.period object and the associated
         rate for each item. These tuples are iterated through when
         gathering the rate helpers.
 
@@ -284,7 +301,7 @@ class InstrumentCollector:
 
         Returns:
             instruments (list):         list of tuples (period, rate), where
-                                        the period is a qlib Period object and
+                                        the period is a ql.Period object and
                                         the rate is a floating number
         """
         instruments = []
@@ -294,10 +311,10 @@ class InstrumentCollector:
             if filter_string in key and 
             value.upper() == 'TRUE']
 
-        # create list of tuples (qlib.Period, qlib.SimpleQuote)
+        # create list of tuples (ql.Period, ql.SimpleQuote)
         for inst in insts:
             period = self.period_function(inst)
-            rate = qlib.SimpleQuote(curve.market_data[inst])
+            rate = ql.SimpleQuote(float(curve.market_data[inst]))
             instruments.append((period, rate))
         return instruments
 
@@ -312,20 +329,20 @@ class InstrumentCollector:
             string (str):           string of instrument, eg. 'deposits_ON'
 
         Returns
-            Period (qlib object):   Object-equivalent of the period in the
+            Period (ql.object):   Object-equivalent of the period in the
                                     input string
         """
 
         units = {
-        'ON': qlib.Period(1, qlib.Days),
-        'TN': qlib.Period(2, qlib.Days),
-        'SN': qlib.Period(3, qlib.Days),
-        'W' : qlib.Weeks,
-        'WK': qlib.Weeks,
-        'M' : qlib.Months,
-        'MO': qlib.Months,
-        'Y' : qlib.Years,
-        'YR': qlib.Years
+        'ON': ql.Period(1, ql.Days),
+        'TN': ql.Period(2, ql.Days),
+        'SN': ql.Period(3, ql.Days),
+        'W' : ql.Weeks,
+        'WK': ql.Weeks,
+        'M' : ql.Months,
+        'MO': ql.Months,
+        'Y' : ql.Years,
+        'YR': ql.Years
         }
 
         inst = string.split('_')[1]
@@ -335,13 +352,13 @@ class InstrumentCollector:
         if digits == '':
             return units[period]
         else:
-            return qlib.Period(int(digits), units[period])
+            return ql.Period(int(digits), units[period])
 
 class DepositsInsts(InstrumentCollector):
     """
     DepositsInsts is an InstrumentCollector for deposits instruments. The
     primary utility is the get_rate_helpers function, which turns the
-    instrument rates into qlib rate helpers, which are subsequently used to
+    instrument rates into ql.rate helpers, which are subsequently used to
     build the curve.
 
     The class only requires the curve that is being built, which already has
@@ -375,11 +392,11 @@ class DepositsInsts(InstrumentCollector):
             curve (LiborCurve object):      curve that you're building
 
         Returns:
-            deposit_rate_helpers (list):    list of qlib DepositRateHelper
+            deposit_rate_helpers (list):    list of ql.DepositRateHelper
                                             objects.
         """
-        return [qlib.DepositRateHelper(
-            qlib.QuoteHandle(rate),
+        return [ql.DepositRateHelper(
+            ql.QuoteHandle(rate),
             period,
             int(curve.conventions['deposits_SpotLag']),
             curve.calendar,
@@ -392,7 +409,7 @@ class FRAsInsts(InstrumentCollector):
     """
     FRAsInsts is an InstrumentCollector for FRA instruments. The
     primary utility is the get_rate_helpers function, which turns the
-    instrument rates into qlib rate helpers, which are subsequently used to
+    instrument rates into ql.rate helpers, which are subsequently used to
     build the curve.
 
     The class only requires the curve that is being built, which already has
@@ -414,7 +431,7 @@ class FRAsInsts(InstrumentCollector):
     def get_instruments(self, curve):
         """
         The get_instruments function serves to return a list of tuples,
-        where each item holds the qlib period object and the associated
+        where each item holds the ql.period object and the associated
         rate for each item. These tuples are iterated through when
         gathering the rate helpers.
 
@@ -429,7 +446,7 @@ class FRAsInsts(InstrumentCollector):
                                         rate), where the start_month and end_month
                                         are integers representing the time from the
                                         curve date where that FRA would be, and
-                                        the rate is a simple qlib quote object
+                                        the rate is a simple ql.quote object
         """
         instruments = []
 
@@ -438,12 +455,12 @@ class FRAsInsts(InstrumentCollector):
             if 'fras' in key and 
             value.upper() == 'TRUE']
 
-        # create list of tuples (qlib.Period, qlib.SimpleQuote)
+        # create list of tuples (ql.Period, ql.SimpleQuote)
         for inst in insts:
             inst_period = inst.split('_')[1]
             start_month = int(inst_period.split('x')[0])
             end_month = int(inst_period.split('x')[1])
-            rate = qlib.SimpleQuote(curve.market_data[inst])
+            rate = ql.SimpleQuote(float(curve.market_data[inst]))
             instruments.append((start_month, end_month, rate))
         return instruments
 
@@ -461,11 +478,11 @@ class FRAsInsts(InstrumentCollector):
             curve (LiborCurve object):      curve that you're building
 
         Returns:
-            deposit_rate_helpers (list):    list of qlib FraRateHelper
+            deposit_rate_helpers (list):    list of ql.FraRateHelper
                                             objects.
         """
-        return [qlib.FraRateHelper(
-                qlib.QuoteHandle(rate),
+        return [ql.FraRateHelper(
+                ql.QuoteHandle(rate),
                 start_month,
                 end_month,
                 int(curve.conventions['fras_SpotLag']),
@@ -479,7 +496,7 @@ class FuturesInsts(InstrumentCollector):
     """
     FuturesInsts is an InstrumentCollector for futures instruments. The
     primary utility is the get_rate_helpers function, which turns the
-    instrument rates into qlib rate helpers, which are subsequently used to
+    instrument rates into ql.rate helpers, which are subsequently used to
     build the curve.
 
     The class only requires the curve that is being built, which already has
@@ -510,14 +527,14 @@ class FuturesInsts(InstrumentCollector):
             curve (LiborCurve object):  curve that you're building
 
         Returns:
-            futures (list):             list of tuples, each tuple containing a qlib
+            futures (list):             list of tuples, each tuple containing a ql
                                         Period object and a floating point rate
         """
-        futures = [(qlib.IMM.nextDate(curve.curve_date),
-                    qlib.SimpleQuote(curve.market_data['futures_1']))]
+        futures = [(ql.IMM.nextDate(curve.curve_date),
+                    ql.SimpleQuote(float(curve.market_data['futures_1'])))]
         for future in range(int(curve.conventions['futures_NumberOfFutures']) - 1):
-            period = qlib.IMM.nextDate(futures[future][0])
-            quote = qlib.SimpleQuote(curve.market_data['futures_' + str(future + 2)])
+            period = ql.IMM.nextDate(futures[future][0])
+            quote = ql.SimpleQuote(float(curve.market_data['futures_' + str(future + 2)]))
             futures.append((period, quote))
         if (futures[0][0] - curve.curve_date) > \
                 int(curve.conventions['futures_DaysToExclude']):
@@ -540,25 +557,25 @@ class FuturesInsts(InstrumentCollector):
             curve (LiborCurve object):      curve that you're building
 
         Returns:
-            deposit_rate_helpers (list):    list of qlib FuturesRateHelper
+            deposit_rate_helpers (list):    list of ql.FuturesRateHelper
                                             objects.
         """
-        return [qlib.FuturesRateHelper(
-                qlib.QuoteHandle(rate),
+        return [ql.FuturesRateHelper(
+                ql.QuoteHandle(rate),
                 period,
                 int(curve.conventions['futures_Tenor']),
                 curve.calendar,
                 self.bus_day_convention[curve.conventions['futures_Adjustment']],
                 False, # End of month
                 curve.day_count_fraction[curve.conventions['futures_DCF']],
-                qlib.QuoteHandle(qlib.SimpleQuote(0.0)))
+                ql.QuoteHandle(ql.SimpleQuote(0.0)))
                 for period, rate in self._inst_ids]
 
 class SwapsInsts(InstrumentCollector):
     """
     SwapsInsts is an InstrumentCollector for swaps instruments. The
     primary utility is the get_rate_helpers function, which turns the
-    instrument rates into qlib rate helpers, which are subsequently used to
+    instrument rates into ql.rate helpers, which are subsequently used to
     build the curve.
 
     The class only requires the curve that is being built, which already has
@@ -578,26 +595,26 @@ class SwapsInsts(InstrumentCollector):
         super(SwapsInsts, self).__init__()
 
         self.swap_freq = {
-        'Once'      : qlib.Once,
-        'Annual'    : qlib.Annual,
-        'Semiannual': qlib.Semiannual,
-        'Quarterly' : qlib.Quarterly,
-        'Monthly'   : qlib.Monthly,
-        'Daily'     : qlib.Daily
+        'Once'      : ql.Once,
+        'Annual'    : ql.Annual,
+        'Semiannual': ql.Semiannual,
+        'Quarterly' : ql.Quarterly,
+        'Monthly'   : ql.Monthly,
+        'Daily'     : ql.Daily
         }
 
         self.ibor_indices = {
-        'AUD': qlib.AUDLibor,
-        'CAD': qlib.Cdor,
-        'CHF': qlib.CHFLibor,
-        'DKK': qlib.DKKLibor,
-        'EUR': qlib.Euribor,
-        'GBP': qlib.GBPLibor,
-        'JPY': qlib.JPYLibor,
-        'NZD': qlib.NZDLibor,
-        'SEK': qlib.SEKLibor,
-        'TRL': qlib.TRLibor,
-        'USD': qlib.USDLibor
+        'AUD': ql.AUDLibor,
+        'CAD': ql.Cdor,
+        'CHF': ql.CHFLibor,
+        'DKK': ql.DKKLibor,
+        'EUR': ql.Euribor,
+        'GBP': ql.GBPLibor,
+        'JPY': ql.JPYLibor,
+        'NZD': ql.NZDLibor,
+        'SEK': ql.SEKLibor,
+        'TRL': ql.TRLibor,
+        'USD': ql.USDLibor
         }
 
         self._inst_ids = self.get_instruments(curve, 'swaps')
@@ -615,25 +632,25 @@ class SwapsInsts(InstrumentCollector):
             curve (LiborCurve object):  curve that you're building
 
         Returns:
-            swap_rate_helpers (list):   list of qlib SwapRateHelper
+            swap_rate_helpers (list):   list of ql.SwapRateHelper
                                         objects.
         """
         if curve.conventions['general_RequiresOIS'].lower() == 'true':
-            return [qlib.SwapRateHelper(
-                qlib.QuoteHandle(rate),
+            return [ql.SwapRateHelper(
+                ql.QuoteHandle(rate),
                 period,
                 curve.calendar,
                 self.swap_freq[curve.conventions['swaps_FixedFreq']],
                 self.bus_day_convention[curve.conventions['swaps_FixedAdjustment']],
                 curve.day_count_fraction[curve.conventions['swaps_FixedLegDCF']],
                 self.ibor_indices[curve.currency](self.period_function(curve.name)),
-                qlib.QuoteHandle(qlib.SimpleQuote(0)), # spread on floating leg
-                qlib.Period(0, qlib.Days), # days forward start
-                qlib.YieldTermStructureHandle(curve.ois_curve.qlibcurve))
+                ql.QuoteHandle(ql.SimpleQuote(0)), # spread on floating leg
+                ql.Period(0, ql.Days), # days forward start
+                ql.YieldTermStructureHandle(curve.ois_curve.qlcurve))
                 for period, rate in self._inst_ids]
         else:            
-            return [qlib.SwapRateHelper(
-                qlib.QuoteHandle(rate),
+            return [ql.SwapRateHelper(
+                ql.QuoteHandle(rate),
                 period,
                 curve.calendar,
                 self.swap_freq[curve.conventions['swaps_FixedFreq']],
@@ -646,7 +663,7 @@ class OISSwapsInsts(InstrumentCollector):
     """
     OISSwapsInsts is an InstrumentCollector for OIS swaps instruments. The
     primary utility is the get_rate_helpers function, which turns the
-    instrument rates into qlib rate helpers, which are subsequently used to
+    instrument rates into ql.rate helpers, which are subsequently used to
     build the curve.
 
     The class only requires the curve that is being built, which already has
@@ -666,18 +683,18 @@ class OISSwapsInsts(InstrumentCollector):
         super(OISSwapsInsts, self).__init__()
 
         self.swap_freq = {
-        'Once'      : qlib.Once,
-        'Annual'    : qlib.Annual,
-        'Semiannual': qlib.Semiannual,
-        'Quarterly' : qlib.Quarterly,
-        'Monthly'   : qlib.Monthly,
-        'Daily'     : qlib.Daily
+        'Once'      : ql.Once,
+        'Annual'    : ql.Annual,
+        'Semiannual': ql.Semiannual,
+        'Quarterly' : ql.Quarterly,
+        'Monthly'   : ql.Monthly,
+        'Daily'     : ql.Daily
         }
 
         self.ibor_indices = {
-        'EUR': qlib.Eonia(),
-        'GBP': qlib.Sonia(),
-        'USD': qlib.FedFunds()
+        'EUR': ql.Eonia(),
+        'GBP': ql.Sonia(),
+        'USD': ql.FedFunds()
         }
 
         self._inst_ids = self.get_instruments(curve, 'swaps')
@@ -695,13 +712,13 @@ class OISSwapsInsts(InstrumentCollector):
             curve (LiborCurve object):  curve that you're building
 
         Returns:
-            swap_rate_helpers (list):   list of qlib SwapRateHelper
+            swap_rate_helpers (list):   list of ql.SwapRateHelper
                                         objects.
         """
-        return [qlib.OISRateHelper(
+        return [ql.OISRateHelper(
                                    int(curve.conventions['deposits_SpotLag']),
                                    period,
-                                   qlib.QuoteHandle(rate),
+                                   ql.QuoteHandle(rate),
                                    self.ibor_indices[curve.currency])
             for period, rate in self._inst_ids]
 
@@ -716,11 +733,11 @@ def main():
     month = int(input('Enter the month (##): '))
     year = int(input('Enter the year (####): '))    
 
-    now_date = qlib.Date(day, month, year)
-    qlib.Settings.instance().evaluationDate = now_date
+    now_date = ql.Date(day, month, year)
+    ql.Settings.instance().evaluationDate = now_date
 
     print('Building...')
-    usd = LiborCurve('USD_3M', now_date)
+    usd = LiborCurve('USD_3M', now_date, conn)
     print('-'*70)
     print('The curve is now built')
     
@@ -741,7 +758,7 @@ def main():
         day = int(input('Day? (##) '))
         month = int(input('Month? (##) '))
         year = int(input('Year? (##) '))
-        random_date = qlib.Date(day, month, year)
+        random_date = ql.Date(day, month, year)
         df = usd.discount_factor(random_date)
         print(df)
 
