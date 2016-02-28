@@ -61,3 +61,4 @@ target/
 
 # qlibpy
 outputs/
+market_data.db
