@@ -86,7 +86,7 @@ class Curve:
                          'WHERE curve_name IS "{curve}" '
                          'AND date IS "{self.iso_date}"').format(**locals())
         cursor.execute(sql_statement)
-        self.market_data = cursor.fetchone()
+        self.rates_data = cursor.fetchone()
         
         sql_statement = ('SELECT * FROM instruments '
                          'where curve_name is "{curve}"').format(**locals())
@@ -306,7 +306,7 @@ class InstrumentCollector:
         # create list of tuples (ql.Period, ql.SimpleQuote)
         for inst in insts:
             period = self.period_function(inst)
-            rate = ql.SimpleQuote(float(curve.market_data[inst]))
+            rate = ql.SimpleQuote(float(curve.rates_data[inst]))
             instruments.append((period, rate))
         return instruments
 
@@ -452,7 +452,7 @@ class FRAsInsts(InstrumentCollector):
             inst_period = inst.split('_')[1]
             start_month = int(inst_period.split('x')[0])
             end_month = int(inst_period.split('x')[1])
-            rate = ql.SimpleQuote(float(curve.market_data[inst]))
+            rate = ql.SimpleQuote(float(curve.rates_data[inst]))
             instruments.append((start_month, end_month, rate))
         return instruments
 
@@ -523,10 +523,10 @@ class FuturesInsts(InstrumentCollector):
                                         Period object and a floating point rate
         """
         futures = [(ql.IMM.nextDate(curve.curve_date),
-                    ql.SimpleQuote(float(curve.market_data['futures_1'])))]
+                    ql.SimpleQuote(float(curve.rates_data['futures_1'])))]
         for future in range(int(curve.conventions['futures_NumberOfFutures']) - 1):
             period = ql.IMM.nextDate(futures[future][0])
-            quote = ql.SimpleQuote(float(curve.market_data['futures_' + str(future + 2)]))
+            quote = ql.SimpleQuote(float(curve.rates_data['futures_' + str(future + 2)]))
             futures.append((period, quote))
         if (futures[0][0] - curve.curve_date) > \
                 int(curve.conventions['futures_DaysToExclude']):
