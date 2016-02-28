@@ -1,7 +1,7 @@
 import csv
 import sqlite3
 
-def _load_csv(cursor, file_name):
+def load_csv(cursor, file_name):
     '''
     Invert and load simple csv's to the database as tables
     taken from 
@@ -29,9 +29,9 @@ def create_db(db_name):
     conn = sqlite3.connect(db_name)
     cursor = conn.cursor()
 
-    _load_csv(cursor, 'data/rates_data.csv')
-    _load_csv(cursor, 'data/instruments.csv')
-    _load_csv(cursor, 'data/conventions.csv')
+    load_csv(cursor, 'data/rates_data.csv')
+    load_csv(cursor, 'data/instruments.csv')
+    load_csv(cursor, 'data/conventions.csv')
 
     conn.commit()
 
