@@ -14,9 +14,10 @@ TODO:   1. Put dicts in another file to import?
         probably just simplify and specify both in the dict. <<
 
 """
-import QuantLib as ql
-import csv, os
+import csv
 import itertools
+import os
+import QuantLib as ql
 
 class Curve:
     """
@@ -56,6 +57,7 @@ class Curve:
     def __init__(self, curve, curve_date, conn):
         self.name = curve
         self.curve_date = curve_date
+        self.iso_date = curve_date.ISO()
         self.conn = conn
 
         self.day_count_fraction = {
@@ -76,15 +78,16 @@ class Curve:
         # get data
         cursor = conn.cursor()
         sql_statement = ('SELECT * FROM conventions '
-                         'where curve_name is "{curve}"').format(**locals())
+                         'WHERE curve_name IS "{curve}"').format(**locals())
         cursor.execute(sql_statement)
         self.conventions = cursor.fetchone()
         
         sql_statement = ('SELECT * FROM rates_data '
-                         'where curve_name is "{curve}"').format(**locals())
+                         'WHERE curve_name IS "{curve}" '
+                         'AND date IS "{self.iso_date}"').format(**locals())
         cursor.execute(sql_statement)
         self.market_data = cursor.fetchone()
-
+        
         sql_statement = ('SELECT * FROM instruments '
                          'where curve_name is "{curve}"').format(**locals())
         cursor.execute(sql_statement)        
