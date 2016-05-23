@@ -16,7 +16,6 @@ TODO:   1. Put dicts in another file to import?
 """
 import QuantLib as ql
 import csv, os
-import itertools
 
 class Curve:
     """
@@ -157,17 +156,6 @@ class Curve:
                 else:
                     result[key] = datatype(row[col_num])
         return result
-
-    def dict_gen(self, curs):
-        ''' 
-        From Python Essential Reference by David Beazley
-        '''
-        field_names = [d[0].lower() for d in curs.description]
-        while True:
-            rows = curs.fetchmany()
-            if not rows: return
-            for row in rows:
-                yield dict(itertools.izip(field_names, row))
 
     def export(self):
         path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'outputs/')
