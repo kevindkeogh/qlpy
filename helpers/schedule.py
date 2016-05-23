@@ -91,10 +91,10 @@ class Schedule:
                 return period_ends
             else: # TODO: Backward from maturity
                 pass
-        else: 
+        else: # Forward from effective
             period_ends += list(rrule.rrule(period_type,
                                             interval=period_length,
-                                            bymonthday=(self.maturity.day, -1),
+                                            bymonthday=(self.effective.day, -1),
                                             bysetpos=1,
                                             dtstart=start,
                                             until=maturity))[1:]
