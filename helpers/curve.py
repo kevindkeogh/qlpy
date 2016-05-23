@@ -81,17 +81,37 @@ class Curve:
                          'WHERE curve_name IS "{curve}"').format(**locals())
         cursor.execute(sql_statement)
         self.conventions = cursor.fetchone()
+        if self.conventions is None:
+            raise ValueError('No conventions exist for {self.name}'.format(**locals()))
         
         sql_statement = ('SELECT * FROM rates_data '
+<<<<<<< HEAD
                          'WHERE curve_name IS "{curve}" '
                          'AND date IS "{self.iso_date}"').format(**locals())
         cursor.execute(sql_statement)
         self.rates_data = cursor.fetchone()
         
+=======
+<<<<<<< Updated upstream
+                         'where curve_name is "{curve}"').format(**locals())
+        cursor.execute(sql_statement)
+        self.market_data = cursor.fetchone()
+=======
+                         'WHERE curve_name IS "{self.name}" '
+                         'AND date IS "{self.iso_date}"').format(**locals())
+        cursor.execute(sql_statement)
+        self.rates_data = cursor.fetchone()
+        if self.rates_data is None:
+            raise ValueError('No data available for {self.name} on {self.iso_date}'.format(**locals()))
+>>>>>>> Stashed changes
+
+>>>>>>> 997fe749c9e04e95eb730523e8727d0fe6c91424
         sql_statement = ('SELECT * FROM instruments '
                          'where curve_name is "{curve}"').format(**locals())
         cursor.execute(sql_statement)        
         self.instrument_ids = cursor.fetchone()
+        if self.instrument_ids is None:
+            raise ValueError('No instruments specified for {self.name}'.format(**locals()))
         
         # add a few general conventions
         self.settlement_date = curve_date + ql.Period(
@@ -278,7 +298,7 @@ class InstrumentCollector:
     def __len__(self):
         return len(self.instruments)
 
-    def get_instruments(self, curve, filter_string):
+    def get_instruments(self, curve):
         """
         The get_instruments function serves to return a list of tuples,
         where each item holds the ql.period object and the associated
@@ -296,6 +316,7 @@ class InstrumentCollector:
                                         the period is a ql.Period object and
                                         the rate is a floating number
         """
+<<<<<<< Updated upstream
         instruments = []
 
         # filter instruments for instruments
@@ -309,6 +330,31 @@ class InstrumentCollector:
             rate = ql.SimpleQuote(float(curve.rates_data[inst]))
             instruments.append((period, rate))
         return instruments
+=======
+        sql_stmt = ('SELECT INSTRUMENT_CONVENTIONS.intrument_type, ' 
+                           'RATES_DATA.rate, '
+                           'INSTRUMENT_CONVENTIONS.instrument_maturity '
+                      'FROM CURVE_INSTRUMENTS '
+                        'JOIN RATES_DATA ON CURVE_INSTRUMENTS.instrument_name'
+                          ' = RATES_DATA.instrument_name AND '
+                        'JOIN INSTRUMENT_CONVENTIONS ON CURVE_INSTRUMENTS.instrument_name'
+                          ' = INSTRUMENT_CONVENTIONS.instrument_name '
+                      'WHERE CURVE_INSTRUMENTS.curve_name = {self.curve_name} AND '
+                        'RATES_DATA.date = {self.iso_date}').format(**locals())
+        
+        cursor.execute(sql_stmt) 
+       
+        insts = {}
+ 
+        for row in cursor:
+            try:
+                insts[row['instrument_type']]row['instrument_maturity'] = row['rate']
+            except KeyError:
+                insts[row['instrument_type']] = {}
+                insts[row['instrument_type']]row['instrument_maturity'] = row['rate']
+        
+        return insts
+>>>>>>> Stashed changes
 
     def period_function(self, string):
         """
