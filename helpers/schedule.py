@@ -18,12 +18,12 @@ class Schedule:
        self.penultimate = penultimate
        self.weeks = weeks
        self.months = months
+       self._check_inputs()
 
        self.period_ends = self._gen_period_ends()
 
-    def _gen_period_ends(self):
+    def _check_inputs(self):
         '''
-        Generate 
         '''
         if self.maturity == self.penultimate:
             raise Exception('Maturity and penultimate dates cannot be equal')
@@ -33,6 +33,12 @@ class Schedule:
             raise Exception('Must increment period by some amount of months or weeks')
         if self.months is not None and self.weeks is not None:
             raise Exception('Can\'t increment by both months and weeks')
+
+
+    def _gen_period_ends(self):
+        '''
+        Generate 
+        '''
         if self.months is not None:
             period_type = rrule.MONTHLY
             period_length = self.months
