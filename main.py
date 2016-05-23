@@ -55,6 +55,8 @@ def main():
         random_date = ql.Date(day, month, year)
         df = usd.discount_factor(random_date)
         print(df)
+    
+    conn.close()
 
 if __name__ == '__main__':
     main()

@@ -14,8 +14,10 @@ TODO:   1. Put dicts in another file to import?
         probably just simplify and specify both in the dict. <<
 
 """
+import csv
+import itertools
+import os
 import QuantLib as ql
-import csv, os
 
 class Curve:
     """
@@ -55,6 +57,7 @@ class Curve:
     def __init__(self, curve, curve_date, conn):
         self.name = curve
         self.curve_date = curve_date
+        self.iso_date = curve_date.ISO()
         self.conn = conn
 
         self.day_count_fraction = {
@@ -75,15 +78,16 @@ class Curve:
         # get data
         cursor = conn.cursor()
         sql_statement = ('SELECT * FROM conventions '
-                         'where curve_name is "{curve}"').format(**locals())
+                         'WHERE curve_name IS "{curve}"').format(**locals())
         cursor.execute(sql_statement)
         self.conventions = cursor.fetchone()
         
         sql_statement = ('SELECT * FROM rates_data '
-                         'where curve_name is "{curve}"').format(**locals())
+                         'WHERE curve_name IS "{curve}" '
+                         'AND date IS "{self.iso_date}"').format(**locals())
         cursor.execute(sql_statement)
-        self.market_data = cursor.fetchone()
-
+        self.rates_data = cursor.fetchone()
+        
         sql_statement = ('SELECT * FROM instruments '
                          'where curve_name is "{curve}"').format(**locals())
         cursor.execute(sql_statement)        
@@ -302,7 +306,7 @@ class InstrumentCollector:
         # create list of tuples (ql.Period, ql.SimpleQuote)
         for inst in insts:
             period = self.period_function(inst)
-            rate = ql.SimpleQuote(float(curve.market_data[inst]))
+            rate = ql.SimpleQuote(float(curve.rates_data[inst]))
             instruments.append((period, rate))
         return instruments
 
@@ -448,7 +452,7 @@ class FRAsInsts(InstrumentCollector):
             inst_period = inst.split('_')[1]
             start_month = int(inst_period.split('x')[0])
             end_month = int(inst_period.split('x')[1])
-            rate = ql.SimpleQuote(float(curve.market_data[inst]))
+            rate = ql.SimpleQuote(float(curve.rates_data[inst]))
             instruments.append((start_month, end_month, rate))
         return instruments
 
@@ -519,10 +523,10 @@ class FuturesInsts(InstrumentCollector):
                                         Period object and a floating point rate
         """
         futures = [(ql.IMM.nextDate(curve.curve_date),
-                    ql.SimpleQuote(float(curve.market_data['futures_1'])))]
+                    ql.SimpleQuote(float(curve.rates_data['futures_1'])))]
         for future in range(int(curve.conventions['futures_NumberOfFutures']) - 1):
             period = ql.IMM.nextDate(futures[future][0])
-            quote = ql.SimpleQuote(float(curve.market_data['futures_' + str(future + 2)]))
+            quote = ql.SimpleQuote(float(curve.rates_data['futures_' + str(future + 2)]))
             futures.append((period, quote))
         if (futures[0][0] - curve.curve_date) > \
                 int(curve.conventions['futures_DaysToExclude']):
@@ -710,45 +714,3 @@ class OISSwapsInsts(InstrumentCollector):
                                    self.ibor_indices[curve.currency])
             for period, rate in self._inst_ids]
 
-
-
-def main():
-    os.system('cls' if os.name == 'nt' else 'clear')
-    # Sample use
-    print('This sample will demonstrate how to build the USD 3M LIBOR curve')
-    print('Enter the date you are trying to build the curve as of')
-    day = int(input('Enter the day (##): '))
-    month = int(input('Enter the month (##): '))
-    year = int(input('Enter the year (####): '))    
-
-    now_date = ql.Date(day, month, year)
-    ql.Settings.instance().evaluationDate = now_date
-
-    print('Building...')
-    usd = LiborCurve('USD_3M', now_date, conn)
-    print('-'*70)
-    print('The curve is now built')
-    
-    export = input('Export discount factors? (y/n) ')
-    if export.lower() == 'y':
-        usd.export()
-        print('Curve has been exported to the outputs folder')
-        print('-'*70)
-
-    print_dfs = input('Print discount factors? (y/n) ')
-    if print_dfs.lower() == 'y':
-        for date in enumerate(usd.dates):
-            print(date[1], usd.discount_factors[date[0]])
-        print('-'*70)
-
-    print_df = input('Print discount factor for specific date? (y/n) ')
-    if print_df.lower() == 'y':
-        day = int(input('Day? (##) '))
-        month = int(input('Month? (##) '))
-        year = int(input('Year? (##) '))
-        random_date = ql.Date(day, month, year)
-        df = usd.discount_factor(random_date)
-        print(df)
-
-if __name__ == '__main__':
-    main()
